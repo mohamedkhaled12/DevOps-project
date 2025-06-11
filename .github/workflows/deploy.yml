@@ -50,7 +50,7 @@ jobs:
       - name: Set output
         id: set-ip
         run: |-
-          echo "instance_public_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+          echo "instance_public_ip=$(terraform output -raw instance_public_ip)"
 
   deploy-app:
     runs-on: ubuntu-latest
