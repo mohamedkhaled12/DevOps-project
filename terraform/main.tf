@@ -88,7 +88,6 @@ resource "aws_ecr_repository" "example_node_app" {
   }
 
   image_tag_mutability = "MUTABLE"
-
   force_delete = true
 }
 
