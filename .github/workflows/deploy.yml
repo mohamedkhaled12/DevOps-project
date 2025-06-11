@@ -19,7 +19,7 @@ jobs:
       SERVER_PUBLIC_IP: ${{ steps.set-ip.outputs.instance_public_ip }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup terraform
         uses: hashicorp/setup-terraform@v1
@@ -58,11 +58,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+
       - name: Set IP env variable
         run: echo "SERVER_PUBLIC_IP=${{ needs.deploy-infra.outputs.SERVER_PUBLIC_IP }}" >> $GITHUB_ENV
+
       - name: Login to AWS ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
+
       - name: Build and push docker image
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -80,17 +83,17 @@ jobs:
           REPOSITORY: example-node-app
           IMAGE_TAG: ${{ github.sha }}
           AWS_DEFAULT_REGION: us-east-1
+          PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
         uses: appleboy/ssh-action@master
         with:
           host: ${{ env.SERVER_PUBLIC_IP }}
           username: ubuntu
           key: ${{ env.PRIVATE_SSH_KEY }}
-          envs: PRIVATE_SSH_KEY,REGISTRY,REPOSITORY,IMAGE_TAG,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,AWS_DEFAULT_REGION,AWS_REGION
+          envs: REGISTRY,REPOSITORY,IMAGE_TAG,AWS_DEFAULT_REGION
           script: |-
             sudo apt update
-            sudo apt install docker.io -y
-            sudo apt install awscli -y
-            sudo $(aws ecr get-login --no-include-email --region us-east-1)
+            sudo apt install -y docker.io awscli
+            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY
             sudo docker stop myappcontainer || true
             sudo docker rm myappcontainer || true
             sudo docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
