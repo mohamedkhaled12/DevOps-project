@@ -1,4 +1,5 @@
 name: CI/CD with Terraform
+
 on:
   push:
     branches:
@@ -13,6 +14,30 @@ env:
   AWS_REGION: us-east-1
 
 jobs:
+  destroy-infra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=us-east-1"
+        working-directory: ./terraform
+
+      - name: Terraform Destroy
+        run: |
+          terraform destroy -auto-approve \
+            -var="region=us-east-1" \
+            -var="public_key=$PUBLIC_SSH_KEY" \
+            -var="private_key=$PRIVATE_SSH_KEY" \
+            -var="key_name=deployer-key"
+        working-directory: ./terraform
+
   deploy-infra:
     runs-on: ubuntu-latest
     outputs:
