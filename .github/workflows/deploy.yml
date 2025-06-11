@@ -15,33 +15,33 @@ env:
   AWS_REGION: us-east-1 # AWS region to operate in
 
 jobs:
-  destroy-infra:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        # Checks out your repository under $GITHUB_WORKSPACE
+  # destroy-infra:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v3
+  #       # Checks out your repository under $GITHUB_WORKSPACE
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_wrapper: false
-        # Installs Terraform CLI
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@v1
+  #       with:
+  #         terraform_wrapper: false
+  #       # Installs Terraform CLI
 
-      - name: Terraform Init
-        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=us-east-1"
-        working-directory: ./terraform
-        # Initializes Terraform and configures remote backend (S3)
+  #     - name: Terraform Init
+  #       run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=us-east-1"
+  #       working-directory: ./terraform
+  #       # Initializes Terraform and configures remote backend (S3)
 
-      - name: Terraform Destroy
-        run: |
-          terraform destroy -auto-approve \
-            -var="region=us-east-1" \
-            -var="public_key=$PUBLIC_SSH_KEY" \
-            -var="private_key=$PRIVATE_SSH_KEY" \
-            -var="key_name=deployer-key"
-        working-directory: ./terraform
-        # Destroys any existing infrastructure created by Terraform
+  #     - name: Terraform Destroy
+  #       run: |
+  #         terraform destroy -auto-approve \
+  #           -var="region=us-east-1" \
+  #           -var="public_key=$PUBLIC_SSH_KEY" \
+  #           -var="private_key=$PRIVATE_SSH_KEY" \
+  #           -var="key_name=deployer-key"
+  #       working-directory: ./terraform
+  #       # Destroys any existing infrastructure created by Terraform
 
   deploy-infra:
     runs-on: ubuntu-latest
