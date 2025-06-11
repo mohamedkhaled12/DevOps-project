@@ -80,6 +80,16 @@ resource "aws_security_group" "maingroup" {
 
 }
 
+resource "aws_ecr_repository" "example_node_app" {
+  name = "example-node-app"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+
 resource "aws_key_pair" "deployer" {
   key_name = var.key_name
   public_key = var.public_key
