@@ -1,56 +1,55 @@
 name: CI/CD with Terraform
-# Workflow name visible in GitHub
 
 on:
   push:
     branches:
       - master
-# Trigger this workflow on pushes to the master branch
+      # Trigger workflow only when pushing to master branch
 
 env:
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }} # AWS credentials from GitHub secrets
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  TF_STATE_BUCKET_NAME: ${{ secrets.AWS_STATE_BUCKET_NAME }}
-  PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
-  PUBLIC_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PUBLIC }}
-  AWS_REGION: us-east-1
-# Set global environment variables from GitHub Secrets
+  TF_STATE_BUCKET_NAME: ${{ secrets.AWS_STATE_BUCKET_NAME }} # S3 bucket to store Terraform state
+  PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }} # SSH key for EC2 instance (private)
+  PUBLIC_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PUBLIC }} # SSH key for EC2 instance (public)
+  AWS_REGION: us-east-1 # AWS region to operate in
 
 jobs:
-  # destroy-infra:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v3
-  #       # Check out the repo to the runner
+  destroy-infra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        # Checks out your repository under $GITHUB_WORKSPACE
 
-  #     - name: Setup Terraform
-  #       uses: hashicorp/setup-terraform@v1
-  #       with:
-  #         terraform_wrapper: false
-  #       # Install Terraform CLI
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_wrapper: false
+        # Installs Terraform CLI
 
-  #     - name: Terraform Init
-  #       run: terraform init \
-  #         -backend-config="bucket=$TF_STATE_BUCKET_NAME" \
-  #         -backend-config="region=us-east-1"
-  #       working-directory: ./terraform
-  #       # Initialize Terraform, using S3 bucket for remote state
+      - name: Terraform Init
+        run: terraform init \
+          -backend-config="bucket=$TF_STATE_BUCKET_NAME" \
+          -backend-config="region=us-east-1"
+        working-directory: ./terraform
+        # Initializes Terraform and configures remote backend (S3)
 
-  #     - name: Terraform Destroy
-  #       run: |
-  #         terraform destroy -auto-approve \
-  #           -var="region=us-east-1" \
-  #           -var="public_key=$PUBLIC_SSH_KEY" \
-  #           -var="private_key=$PRIVATE_SSH_KEY" \
-  #           -var="key_name=deployer-key"
-  #       working-directory: ./terraform
-  #       # Destroys all resources created by Terraform
+      - name: Terraform Destroy
+        run: |
+          terraform destroy -auto-approve \
+            -var="region=us-east-1" \
+            -var="public_key=$PUBLIC_SSH_KEY" \
+            -var="private_key=$PRIVATE_SSH_KEY" \
+            -var="key_name=deployer-key"
+        working-directory: ./terraform
+        # Destroys any existing infrastructure created by Terraform
 
   deploy-infra:
     runs-on: ubuntu-latest
     outputs:
       SERVER_PUBLIC_IP: ${{ steps.set-ip.outputs.instance_public_ip }}
+      # Makes the EC2 public IP available to dependent jobs
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -66,7 +65,6 @@ jobs:
           -backend-config="bucket=$TF_STATE_BUCKET_NAME" \
           -backend-config="region=us-east-1"
         working-directory: ./terraform
-        # Again, initialize remote state for Terraform
 
       - name: Terraform Plan
         id: plan
@@ -77,36 +75,36 @@ jobs:
           -var="key_name=deployer-key" \
           -out=PLAN
         working-directory: ./terraform
-        # Generate a plan and store to PLAN file
+        # Creates and saves an execution plan
 
       - name: Terraform Apply
         id: apply
         run: terraform apply -auto-approve PLAN
         working-directory: ./terraform
-        # Apply the previously generated plan, creating infra
+        # Applies the saved plan to create infrastructure
 
       - name: Set output
         id: set-ip
         working-directory: ./terraform
         run: echo "instance_public_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
-        # Capture EC2 instance's public IP into workflow output
+        # Captures the EC2 instance's public IP as an output for later use
 
   deploy-app:
     runs-on: ubuntu-latest
     needs: deploy-infra
-    # Ensure this job runs after 'deploy-infra' completes
+    # This job depends on successful completion of deploy-infra
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: Set IP env variable
         run: echo "SERVER_PUBLIC_IP=${{ needs.deploy-infra.outputs.SERVER_PUBLIC_IP }}" >> $GITHUB_ENV
-        # Make the EC2 IP available in this job's env
+        # Saves the EC2 IP as an environment variable for this job
 
       - name: Login to AWS ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-        # Authenticates Docker with Amazon ECR
+        # Authenticates Docker to push/pull from ECR
 
       - name: Build and push docker image
         env:
@@ -118,7 +116,7 @@ jobs:
           docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
           docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
         working-directory: .
-        # Builds Docker image and pushes it to ECR
+        # Builds Docker image and pushes it to ECR with Git SHA as tag
 
       - name: Deploy docker image to EC2
         env:
@@ -142,4 +140,4 @@ jobs:
             sudo docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
             sudo docker run -d --name myappcontainer -p 80:8080 $REGISTRY/$REPOSITORY:$IMAGE_TAG
             sudo docker logs --tail 50 myappcontainer
-        # SSHs into EC2: installs Docker, pulls the image, stops old container, runs new one
+        # Installs Docker and AWS CLI, pulls latest image, replaces running container
