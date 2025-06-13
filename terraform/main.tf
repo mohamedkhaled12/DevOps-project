@@ -9,11 +9,13 @@ terraform {
         key = "aws/ec2-deploy/terraform.tfstate"
     }
 }
+# Configure Terraform: use AWS provider and store state in S3 at this key
 
 provider "aws" {
   region = var.region
 }
 
+# Creates an EC2 instance with SSH access, security group, IAM profile, and tags
 resource "aws_instance" "server" {
     ami = "ami-0a7d80731ae1b2435"
     instance_type = "t2.micro"
@@ -32,12 +34,14 @@ resource "aws_instance" "server" {
     }
 }
 
+# Attaches an IAM role to allow instance to pull from ECR
 resource "aws_iam_instance_profile" "ec2-profile" {
   name = "ec2-profile"
   role = "EC2-ECR-AUTH"
   
 }
 
+# Security group allowing SSH (22) and HTTP (80) inbound; all outbound traffic
 resource "aws_security_group" "maingroup" {
   egress = [
     {
@@ -80,7 +84,7 @@ resource "aws_security_group" "maingroup" {
 
 }
 
-
+# Creates an ECR repository with image scanning and mutable tags
 resource "aws_ecr_repository" "example_node_app" {
   name = "example-node-app"
 
@@ -92,12 +96,13 @@ resource "aws_ecr_repository" "example_node_app" {
   force_delete = true
 }
 
-
+# Uploads the public SSH key so Terraform/EC2 can boot with authorized access
 resource "aws_key_pair" "deployer" {
   key_name = var.key_name
   public_key = var.public_key
 }
 
+# Outputs the public IP of the instance (hidden in logs for safety)
 output "instance_public_ip" {
   value = aws_instance.server.public_ip
   sensitive = true
