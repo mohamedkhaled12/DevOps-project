@@ -14,123 +14,123 @@ env:
   AWS_REGION: us-east-1
 
 jobs:
-  destroy-infra:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      # Install Terraform CLI
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_wrapper: false
-
-      # Initialize Terraform, using S3 bucket for remote state
-      - name: Terraform Init
-        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=us-east-1"
-        working-directory: ./terraform
-
-      # Destroys all resources created by Terraform
-      - name: Terraform Destroy
-        run: |
-          terraform destroy -auto-approve \
-            -var="region=us-east-1" \
-            -var="public_key=$PUBLIC_SSH_KEY" \
-            -var="private_key=$PRIVATE_SSH_KEY" \
-            -var="key_name=deployer-key"
-        working-directory: ./terraform
-
-  # deploy-infra:
+  # destroy-infra:
   #   runs-on: ubuntu-latest
-  #   outputs:
-  #     SERVER_PUBLIC_IP: ${{ steps.set-ip.outputs.instance_public_ip }}
   #   steps:
   #     - name: Checkout
   #       uses: actions/checkout@v3
 
-  #     - name: Setup terraform
+  #     # Install Terraform CLI
+  #     - name: Setup Terraform
   #       uses: hashicorp/setup-terraform@v1
   #       with:
   #         terraform_wrapper: false
 
+  #     # Initialize Terraform, using S3 bucket for remote state
   #     - name: Terraform Init
-  #       id: init
   #       run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=us-east-1"
   #       working-directory: ./terraform
 
-  #     # Generate a plan and store to PLAN file
-  #     - name: Terraform Plan
-  #       id: plan
-  #       run: |-
-  #         terraform plan \
-  #         -var="region=us-east-1" \
-  #         -var="public_key=$PUBLIC_SSH_KEY" \
-  #         -var="private_key=$PRIVATE_SSH_KEY" \
-  #         -var="key_name=deployer-key" \
-  #         -out=PLAN
+  #     # Destroys all resources created by Terraform
+  #     - name: Terraform Destroy
+  #       run: |
+  #         terraform destroy -auto-approve \
+  #           -var="region=us-east-1" \
+  #           -var="public_key=$PUBLIC_SSH_KEY" \
+  #           -var="private_key=$PRIVATE_SSH_KEY" \
+  #           -var="key_name=deployer-key"
   #       working-directory: ./terraform
 
-  #       # Apply the previously generated plan, creating infra
-  #     - name: Terraform Apply
-  #       id: apply
-  #       run: terraform apply -auto-approve PLAN
-  #       working-directory: ./terraform
-  #     # Capture EC2 instance's public IP into workflow output
-  #     - name: Set output
-  #       id: set-ip
-  #       working-directory: ./terraform
-  #       run: echo "instance_public_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+  deploy-infra:
+    runs-on: ubuntu-latest
+    outputs:
+      SERVER_PUBLIC_IP: ${{ steps.set-ip.outputs.instance_public_ip }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-  # deploy-app:
-  #   runs-on: ubuntu-latest
-  #   needs: deploy-infra
-  #   # Ensure this job runs after 'deploy-infra' completes
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v3
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_wrapper: false
 
-  #     # Make the EC2 IP available in this job's env
-  #     - name: Set IP env variable
-  #       run: echo "SERVER_PUBLIC_IP=${{ needs.deploy-infra.outputs.SERVER_PUBLIC_IP }}" >> $GITHUB_ENV
+      - name: Terraform Init
+        id: init
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET_NAME" -backend-config="region=us-east-1"
+        working-directory: ./terraform
 
-  #     # Authenticates Docker with Amazon ECR
-  #     - name: Login to AWS ECR
-  #       id: login-ecr
-  #       uses: aws-actions/amazon-ecr-login@v1
+      # Generate a plan and store to PLAN file
+      - name: Terraform Plan
+        id: plan
+        run: |-
+          terraform plan \
+          -var="region=us-east-1" \
+          -var="public_key=$PUBLIC_SSH_KEY" \
+          -var="private_key=$PRIVATE_SSH_KEY" \
+          -var="key_name=deployer-key" \
+          -out=PLAN
+        working-directory: ./terraform
 
-  #     # Builds Docker image and pushes it to ECR
-  #     - name: Build and push docker image
-  #       env:
-  #         REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-  #         REPOSITORY: example-node-app
-  #         IMAGE_TAG: ${{ github.sha }}
-  #         AWS_DEFAULT_REGION: us-east-1
-  #       run: |-
-  #         docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
-  #         docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
-  #       working-directory: .
+        # Apply the previously generated plan, creating infra
+      - name: Terraform Apply
+        id: apply
+        run: terraform apply -auto-approve PLAN
+        working-directory: ./terraform
+      # Capture EC2 instance's public IP into workflow output
+      - name: Set output
+        id: set-ip
+        working-directory: ./terraform
+        run: echo "instance_public_ip=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
 
-  #     # SSHs into EC2: installs Docker, pulls the image, stops old container, runs new one
-  #     - name: Deploy docker image to EC2
-  #       env:
-  #         REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-  #         REPOSITORY: example-node-app
-  #         IMAGE_TAG: ${{ github.sha }}
-  #         AWS_DEFAULT_REGION: us-east-1
-  #         PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
-  #       uses: appleboy/ssh-action@master
-  #       with:
-  #         host: ${{ env.SERVER_PUBLIC_IP }}
-  #         username: ubuntu
-  #         key: ${{ env.PRIVATE_SSH_KEY }}
-  #         envs: REGISTRY,REPOSITORY,IMAGE_TAG,AWS_DEFAULT_REGION
-  #         script: |-
-  #           sudo apt update
-  #           sudo apt install -y docker.io awscli
-  #           aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY
-  #           sudo docker stop myappcontainer || true
-  #           sudo docker rm myappcontainer || true
-  #           sudo docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
-  #           sudo docker run -d --name myappcontainer -p 80:8080 $REGISTRY/$REPOSITORY:$IMAGE_TAG
-  #           sudo docker logs --tail 50 myappcontainer
+  deploy-app:
+    runs-on: ubuntu-latest
+    needs: deploy-infra
+    # Ensure this job runs after 'deploy-infra' completes
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # Make the EC2 IP available in this job's env
+      - name: Set IP env variable
+        run: echo "SERVER_PUBLIC_IP=${{ needs.deploy-infra.outputs.SERVER_PUBLIC_IP }}" >> $GITHUB_ENV
+
+      # Authenticates Docker with Amazon ECR
+      - name: Login to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      # Builds Docker image and pushes it to ECR
+      - name: Build and push docker image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: example-node-app
+          IMAGE_TAG: ${{ github.sha }}
+          AWS_DEFAULT_REGION: us-east-1
+        run: |-
+          docker build -t $REGISTRY/$REPOSITORY:$IMAGE_TAG .
+          docker push $REGISTRY/$REPOSITORY:$IMAGE_TAG
+        working-directory: .
+
+      # SSHs into EC2: installs Docker, pulls the image, stops old container, runs new one
+      - name: Deploy docker image to EC2
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          REPOSITORY: example-node-app
+          IMAGE_TAG: ${{ github.sha }}
+          AWS_DEFAULT_REGION: us-east-1
+          PRIVATE_SSH_KEY: ${{ secrets.AWS_SSH_KEY_PRIVATE }}
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ env.SERVER_PUBLIC_IP }}
+          username: ubuntu
+          key: ${{ env.PRIVATE_SSH_KEY }}
+          envs: REGISTRY,REPOSITORY,IMAGE_TAG,AWS_DEFAULT_REGION
+          script: |-
+            sudo apt update
+            sudo apt install -y docker.io awscli
+            aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin $REGISTRY
+            sudo docker stop myappcontainer || true
+            sudo docker rm myappcontainer || true
+            sudo docker pull $REGISTRY/$REPOSITORY:$IMAGE_TAG
+            sudo docker run -d --name myappcontainer -p 80:8080 $REGISTRY/$REPOSITORY:$IMAGE_TAG
+            sudo docker logs --tail 50 myappcontainer
